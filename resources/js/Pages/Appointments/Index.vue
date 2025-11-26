@@ -37,12 +37,13 @@ const deleteAppointment = (appointment) => {
 
 const formatDateTime = (dateTime) => {
     const date = new Date(dateTime);
-    return date.toLocaleString('es-ES', {
+    return date.toLocaleString('es-CO', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        timeZone: 'America/Bogota'
     });
 };
 
