@@ -9,6 +9,7 @@ use Illuminate\Http\Response;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class AppointmentController extends Controller
 {
@@ -31,7 +32,8 @@ class AppointmentController extends Controller
         
         return Inertia::render('Appointments/Calendar', [
             'daysAvailable' => $daysAvailable,
-            'appointmentDuration' => env('APPOINTMENT_DURATION_MINUTES', 20),
+            // CORRECCIÓN 1: Forzar (int) para evitar el error de prop en Vue
+            'appointmentDuration' => (int) env('APPOINTMENT_DURATION_MINUTES', 20),
         ]);
     }
 
@@ -40,99 +42,199 @@ class AppointmentController extends Controller
      */
     public function getAvailableSlots(Request $request)
     {
-        $start = Carbon::parse($request->input('start'));
-        $end = Carbon::parse($request->input('end'));
+        // CORRECCIÓN 3: Try-catch para capturar el error 500 y mostrarlo
+        try {
+            $start = Carbon::parse($request->input('start'), 'UTC')->setTimezone('America/Bogota');
+            $end = Carbon::parse($request->input('end'), 'UTC')->setTimezone('America/Bogota');
+            
+            $allSlots = $this->generateAllSlotsWithStatus($start, $end);
+            
+            return response()->json($allSlots);
+        } catch (\Exception $e) {
+            Log::error('Error generando slots: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Generate all time slots and determine their status (available, booked, etc.). 
+     */
+    private function generateAllSlotsWithStatus(Carbon $start, Carbon $end)
+    {
+        // LOG 1: Ver qué rango de fechas llega
+        Log::info("--- GENERANDO SLOTS ---");
+        Log::info("Rango: " . $start->toDateTimeString() . " hasta " . $end->toDateTimeString());
+
+        $slots = [];
+        $daysAvailable = $this->getAvailableDays();
+        // CORRECCIÓN 1: Forzar (int) aquí también para sumar minutos correctamente
+        $duration = (int) env('APPOINTMENT_DURATION_MINUTES', 20);
+
+        // LOG 2: Ver qué días están configurados en el .env
+        Log::info("Días disponibles config: " . implode(', ', $daysAvailable));
+
+        $bookedAppointments = Appointment::with('user')
+            ->whereRaw("appointment_date >= ? AND appointment_date <= ?", [
+                $start->format('Y-m-d 00:00:00'),
+                $end->format('Y-m-d 23:59:59')
+            ])
+            ->get()
+            ->mapWithKeys(function ($appointment) {
+                return [$appointment->appointment_date->format('Y-m-d H:i:s') => $appointment];
+            });
+
+        // LOG 3: Cuántas citas encontró en la BD
+        Log::info("Citas encontradas en BD: " . $bookedAppointments->count());
+
+        $currentDate = $start->copy()->startOfDay();
+
+        while ($currentDate->lte($end)) {
+            $dayNameEnglish = $currentDate->format('l');
+            $dayNameLocal = $currentDate->translatedFormat('l');
+            
+            // LOG 4: Ver qué día está analizando el bucle
+            Log::info("Analizando día: " . $currentDate->format('Y-m-d') . " ($dayNameEnglish / $dayNameLocal)");
+
+            $daysAvailableLower = array_map('strtolower', $daysAvailable);
+            
+            if (in_array(strtolower($dayNameEnglish), $daysAvailableLower) || 
+                in_array(strtolower($dayNameLocal), $daysAvailableLower)) {
+                
+                // LOG 5: ¡Éxito! Entró al IF del día
+                Log::info("-> El día es válido. Generando horas...");
+
+                $slotTime = $currentDate->copy()->setTime(8, 0, 0);
+                $endOfDay = $currentDate->copy()->setTime(18, 0, 0);
+                
+                while ($slotTime->lt($endOfDay)) {
+                    $slotTimeFormatted = $slotTime->format('Y-m-d H:i:s');
+                    $endTime = $slotTime->copy()->addMinutes($duration);
+
+                    // 3. Verificación directa en el array en memoria
+                    if ($bookedAppointments->has($slotTimeFormatted)) {
+                        $appointment = $bookedAppointments->get($slotTimeFormatted);
+                        $slots[] = [
+                            'id' => $appointment->id,
+                            'title' => 'Reservado - ' . $appointment->user->name,
+                            'start' => $slotTimeFormatted,
+                            'end' => $endTime->format('Y-m-d H:i:s'),
+                            'extendedProps' => [
+                                'type' => 'booked',
+                                'userId' => $appointment->user_id,
+                                'status' => $appointment->status,
+                            ],
+                        ];
+                    } else {
+                        if ($slotTime->isFuture()) {
+                            $slots[] = [
+                                'title' => 'Disponible',
+                                'start' => $slotTimeFormatted,
+                                'end' => $endTime->format('Y-m-d H:i:s'),
+                                'extendedProps' => [
+                                    'type' => 'available',
+                                ],
+                            ];
+                        }
+                    }
+                    
+                    $slotTime->addMinutes($duration);
+                }
+            } else {
+                // LOG 6: Falló la validación del día
+                Log::info("-> Día NO válido o no configurado.");
+            }
+            
+            $currentDate->addDay();
+        }
         
-        $availableSlots = $this->generateAvailableSlots($start, $end);
-        $bookedAppointments = $this->getBookedAppointments($start, $end);
-        
-        return response()->json([
-            'availableSlots' => $availableSlots,
-            'bookedAppointments' => $bookedAppointments,
-        ]);
+        Log::info("Total slots generados: " . count($slots));
+        return $slots;
     }
 
     /**
      * Generate available time slots based on configuration.
      */
     private function generateAvailableSlots(Carbon $start, Carbon $end)
-    {
-        $slots = [];
-        $daysAvailable = $this->getAvailableDays();
-        $duration = env('APPOINTMENT_DURATION_MINUTES', 20);
-        
-        // Define business hours (8 AM to 6 PM)
-        $businessHoursStart = 8;
-        $businessHoursEnd = 18;
-        
-        $currentDate = $start->copy()->startOfDay();
-        
-        while ($currentDate->lte($end)) {
-            $dayName = $currentDate->format('l');
-            
-            if (in_array($dayName, $daysAvailable)) {
-                // Generate time slots for this day
-                $slotTime = $currentDate->copy()->setTime($businessHoursStart, 0);
-                $endOfDay = $currentDate->copy()->setTime($businessHoursEnd, 0);
-                
-                while ($slotTime->lt($endOfDay)) {
-                    // Check if slot is not already booked
-                    $isBooked = Appointment::where('appointment_date', $slotTime->format('Y-m-d H:i:s'))
-                        ->exists();
-                    
-                    if (!$isBooked && $slotTime->isFuture()) {
-                        $slots[] = [
-                            'title' => 'Available',
-                            'start' => $slotTime->format('Y-m-d H:i:s'),
-                            'end' => $slotTime->copy()->addMinutes($duration)->format('Y-m-d H:i:s'),
-                            'backgroundColor' => '#10b981',
-                            'borderColor' => '#059669',
-                            'classNames' => ['available-slot'],
-                            'extendedProps' => [
-                                'type' => 'available',
-                            ],
-                        ];
-                    }
-                    
-                    $slotTime->addMinutes($duration);
+{
+    $slots = [];
+    $daysAvailable = $this->getAvailableDays();
+    $duration = env('APPOINTMENT_DURATION_MINUTES', 20);
+
+    $businessHoursStart = 8;
+    $businessHoursEnd = 18;
+
+    $currentDate = $start->copy()->startOfDay();
+
+    while ($currentDate->lte($end)) {
+        $dayName = $currentDate->format('l');
+
+        if (in_array($dayName, $daysAvailable)) {
+
+            $slotTime = $currentDate->copy()->setTime($businessHoursStart, 0);
+            $endOfDay = $currentDate->copy()->setTime($businessHoursEnd, 0);
+
+            while ($slotTime->lt($endOfDay)) {
+
+                $isBooked = Appointment::where('appointment_date', $slotTime->format('Y-m-d H:i:s'))
+                    ->exists();
+
+                if (!$isBooked && $slotTime->isFuture()) {
+                    $slots[] = [
+                        'title' => 'Available',
+                        'start' => $slotTime->format('Y-m-d H:i:s'),
+                        'end' => $slotTime->copy()->addMinutes($duration)->format('Y-m-d H:i:s'),
+                        'backgroundColor' => '#10b981',
+                        'borderColor' => '#059669',
+                        'classNames' => ['available-slot'],
+                        'extendedProps' => [
+                            'type' => 'available',
+                        ],
+                    ];
                 }
+
+                $slotTime->addMinutes($duration);
             }
-            
-            $currentDate->addDay();
         }
-        
-        return $slots;
+
+        $currentDate->addDay();
     }
+
+    return $slots;
+}
+
+
 
     /**
      * Get booked appointments for the calendar.
      */
     private function getBookedAppointments(Carbon $start, Carbon $end)
-    {
-        $appointments = Appointment::with('user')
-            ->whereBetween('appointment_date', [$start, $end])
-            ->get();
-        
-        $duration = env('APPOINTMENT_DURATION_MINUTES', 20);
-        
-        return $appointments->map(function ($appointment) use ($duration) {
-            $startTime = Carbon::parse($appointment->appointment_date);
-            
-            return [
-                'id' => $appointment->id,
-                'title' => 'Booked - ' . $appointment->user->name,
-                'start' => $startTime->format('Y-m-d H:i:s'),
-                'end' => $startTime->copy()->addMinutes($duration)->format('Y-m-d H:i:s'),
-                'backgroundColor' => '#ef4444',
-                'borderColor' => '#dc2626',
-                'extendedProps' => [
-                    'type' => 'booked',
-                    'userId' => $appointment->user_id,
-                    'status' => $appointment->status,
-                ],
-            ];
-        })->toArray();
-    }
+{
+    $appointments = Appointment::with('user')
+        ->whereBetween('appointment_date', [$start, $end])
+        ->get();
+
+    $duration = env('APPOINTMENT_DURATION_MINUTES', 20);
+
+    return $appointments->map(function ($appointment) use ($duration) {
+        $startTime = Carbon::parse($appointment->appointment_date);
+
+        return [
+            'id' => $appointment->id,
+            'title' => 'Booked - ' . $appointment->user->name,
+            'start' => $startTime->format('Y-m-d H:i:s'),
+            'end' => $startTime->copy()->addMinutes($duration)->format('Y-m-d H:i:s'),
+            'backgroundColor' => '#ef4444',
+            'borderColor' => '#dc2626',
+            'extendedProps' => [
+                'type' => 'booked',
+                'userId' => $appointment->user_id,
+                'status' => $appointment->status,
+            ],
+        ];
+    })->toArray();
+}
+
+
 
     /**
      * Get the list of available days from environment configuration.
@@ -194,7 +296,7 @@ class AppointmentController extends Controller
      */
     public function show(Appointment $appointment)
     {
-        return Inertia::render('Appointments/Show', [
+        return Inertia::render('Appointments/Index', [
             'appointment' => $appointment->load('user'),
         ]);
     }
