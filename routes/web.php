@@ -14,6 +14,9 @@ Route::get('/', function () {
     ]);
 });
 
+Route::get('/appointments/create', [AppointmentController::class, 'create'])->name('appointments.create');
+Route::post('/appointments', [AppointmentController::class, 'store'])->name('appointments.store');
+
 Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
@@ -23,8 +26,8 @@ Route::middleware([
         return Inertia::render('Dashboard');
     })->name('dashboard');
 
-    Route::get('/appointments/calendar', [App\Http\Controllers\AppointmentController::class, 'calendar'])->name('appointments.calendar');
-    Route::get('/appointments/available-slots', [App\Http\Controllers\AppointmentController::class, 'getAvailableSlots'])->name('appointments.available-slots');
-    Route::patch('/appointments/{appointment}/cancel', [App\Http\Controllers\AppointmentController::class, 'cancel'])->name('appointments.cancel');
-    Route::resource('appointments', App\Http\Controllers\AppointmentController::class);
+    Route::get('/appointments/calendar', [AppointmentController::class, 'calendar'])->name('appointments.calendar');
+    Route::get('/appointments/available-slots', [AppointmentController::class, 'getAvailableSlots'])->name('appointments.available-slots');
+    Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel'])->name('appointments.cancel');
+    Route::resource('appointments', AppointmentController::class)->except(['create', 'store']);
 });
