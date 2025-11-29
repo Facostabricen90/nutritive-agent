@@ -16,6 +16,9 @@ Route::get('/', function () {
 
 Route::get('/appointments/create', [AppointmentController::class, 'create'])->name('appointments.create');
 Route::post('/appointments', [AppointmentController::class, 'store'])->name('appointments.store');
+Route::get('/appointments/calendar', [AppointmentController::class, 'calendar'])->name('appointments.calendar');
+Route::get('/appointments/available-slots', [AppointmentController::class, 'getAvailableSlots'])->name('appointments.available-slots');
+Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel'])->name('appointments.cancel');
 
 Route::middleware([
     'auth:sanctum',
@@ -25,9 +28,4 @@ Route::middleware([
     Route::get('/dashboard', function () {
         return Inertia::render('Dashboard');
     })->name('dashboard');
-
-    Route::get('/appointments/calendar', [AppointmentController::class, 'calendar'])->name('appointments.calendar');
-    Route::get('/appointments/available-slots', [AppointmentController::class, 'getAvailableSlots'])->name('appointments.available-slots');
-    Route::patch('/appointments/{appointment}/cancel', [AppointmentController::class, 'cancel'])->name('appointments.cancel');
-    Route::resource('appointments', AppointmentController::class)->except(['create', 'store']);
 });

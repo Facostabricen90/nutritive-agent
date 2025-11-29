@@ -62,9 +62,9 @@ defineProps({
                                 Registrarse
                             </Link>
                         </template>
-                        
+
                         <Link
-                            :href="route('appointments.create')"
+                            :href="route('appointments.calendar')"
                             class="px-6 py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5"
                         >
                             Agendar Cita
@@ -81,8 +81,8 @@ defineProps({
                     <!-- Hero Content -->
                     <div class="md:w-1/2">
                         <h1 class="text-4xl md:text-6xl font-bold mb-6 leading-tight">
-                            Tu salud empieza con una 
-                            <span class="text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-teal-600">nutrición</span> 
+                            Tu salud empieza con una
+                            <span class="text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-teal-600">nutrición</span>
                             adecuada
                         </h1>
                         <p class="text-xl text-gray-600 mb-8 dark:text-gray-300">
@@ -90,7 +90,7 @@ defineProps({
                         </p>
                         <div class="flex flex-col sm:flex-row gap-4">
                             <Link
-                                :href="route('appointments.create')"
+                                :href="route('appointments.calendar')"
                                 class="px-8 py-4 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 text-center font-semibold"
                             >
                                 Agendar Cita Gratis
@@ -107,8 +107,8 @@ defineProps({
                     <!-- Hero Image -->
                     <div class="md:w-1/2 relative">
                         <div class="relative z-10 rounded-2xl overflow-hidden shadow-2xl">
-                            <img 
-                                src="https://images.unsplash.com/photo-1559757148-5c350d0d3c56?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80" 
+                            <img
+                                src="../../images/Nutricion-HomePage.png"
                                 alt="Nutricionista profesional asesorando a paciente"
                                 class="w-full h-auto object-cover"
                             />
@@ -183,7 +183,7 @@ defineProps({
                 </p>
                 <div class="flex flex-col sm:flex-row justify-center gap-4">
                     <Link
-                        :href="route('appointments.create')"
+                        :href="route('appointments.calendar')"
                         class="px-8 py-4 bg-white text-green-600 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 text-center font-semibold"
                     >
                         Agendar Mi Primera Cita
