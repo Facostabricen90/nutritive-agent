@@ -28,6 +28,7 @@
         "@fullcalendar/timegrid": "^6.1.19",
         "@fullcalendar/vue3": "^6.1.19",
         "@headlessui/vue": "^1.7.23",
-        "@heroicons/vue": "^2.2.0"
+        "@heroicons/vue": "^2.2.0",
+        "lodash": "^4.17.21"
     }
 }
