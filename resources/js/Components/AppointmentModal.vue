@@ -40,8 +40,64 @@
                                     </div>
 
                                     <!-- Appointment Form for booking -->
-                                    <div v-if="type === 'book'" class="mt-6">
-                                        <form @submit.prevent="confirmAction" class="space-y-4" :value="formattedDate">
+                                    <div v-if="type === 'book'" class="mt-6 text-left">
+                                        <form @submit.prevent="confirmAction" class="space-y-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                    Nombre completo
+                                                </label>
+                                                <input
+                                                    v-model.trim="form.patient_name"
+                                                    type="text"
+                                                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                                                />
+                                                <p v-if="formErrors.patient_name" class="mt-1 text-sm text-red-600 dark:text-red-400">
+                                                    {{ formErrors.patient_name }}
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                    Cédula / Documento
+                                                </label>
+                                                <input
+                                                    v-model.trim="form.patient_document"
+                                                    type="text"
+                                                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                                                />
+                                                <p v-if="formErrors.patient_document" class="mt-1 text-sm text-red-600 dark:text-red-400">
+                                                    {{ formErrors.patient_document }}
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                    Correo electrónico
+                                                </label>
+                                                <input
+                                                    v-model.trim="form.patient_email"
+                                                    type="email"
+                                                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                                                />
+                                                <p v-if="formErrors.patient_email" class="mt-1 text-sm text-red-600 dark:text-red-400">
+                                                    {{ formErrors.patient_email }}
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                                    Razón de la consulta
+                                                </label>
+                                                <textarea
+                                                    v-model.trim="form.appointment_reason"
+                                                    rows="3"
+                                                    class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 focus:border-blue-500 focus:ring-blue-500"
+                                                    placeholder="Describe brevemente tu motivo de consulta"
+                                                ></textarea>
+                                                <p v-if="formErrors.appointment_reason" class="mt-1 text-sm text-red-600 dark:text-red-400">
+                                                    {{ formErrors.appointment_reason }}
+                                                </p>
+                                            </div>
                                         </form>
                                     </div>
                                 </div>
@@ -106,7 +162,13 @@ const emit = defineEmits(['close', 'confirm']);
 
 const formattedDate = computed(() => {
     if (!props.appointmentDate) return '';
-    return props.appointmentDate.toLocaleString('es-CO', {
+    const date = typeof props.appointmentDate === 'string'
+        ? new Date(props.appointmentDate)
+        : props.appointmentDate;
+
+    if (!date || isNaN(date.getTime())) return '';
+
+    return date.toLocaleString('es-CO', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -191,6 +253,52 @@ const confirmButtonText = computed(() => {
     }
 });
 
+const initialFormState = () => ({
+    patient_name: '',
+    patient_document: '',
+    patient_email: '',
+    appointment_reason: '',
+});
+
+const form = ref(initialFormState());
+const formErrors = ref({});
+
+watch(
+    () => props.isOpen && props.type === 'book',
+    (shouldReset) => {
+        if (shouldReset) {
+            form.value = initialFormState();
+            formErrors.value = {};
+        }
+    }
+);
+
+function validateForm() {
+    const errors = {};
+
+    if (!form.value.patient_name) {
+        errors.patient_name = 'Ingresa tu nombre completo.';
+    }
+
+    if (!form.value.patient_document) {
+        errors.patient_document = 'Ingresa tu cédula o documento.';
+    }
+
+    if (!form.value.patient_email) {
+        errors.patient_email = 'Ingresa tu correo electrónico.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.patient_email)) {
+        errors.patient_email = 'El correo electrónico no es válido.';
+    }
+
+    if (!form.value.appointment_reason) {
+        errors.appointment_reason = 'Describe brevemente la razón de tu consulta.';
+    }
+
+    formErrors.value = errors;
+
+    return Object.keys(errors).length === 0;
+}
+
 function closeModal() {
     if (props.isLoading) return;
     emit('close');
@@ -198,10 +306,15 @@ function closeModal() {
 
 function confirmAction() {
     if (props.isLoading) return;
-    
+
+    if (props.type === 'book' && !validateForm()) {
+        return;
+    }
+
     emit('confirm', {
         type: props.type,
         date: props.appointmentDate,
+        form: { ...form.value },
     });
 }
 </script>

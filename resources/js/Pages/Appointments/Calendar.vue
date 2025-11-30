@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import axios from 'axios';
@@ -9,10 +9,85 @@ import ToastNotification from '@/Components/ToastNotification.vue';
 const props = defineProps({
     daysAvailable: Array,
     appointmentDuration: Number,
+    doctors: {
+        type: Array,
+        default: () => [],
+    },
 });
 
 const isLoading = ref(false);
 const toast = ref(null);
+
+const doctors = ref(props.doctors ?? []);
+
+watch(
+    () => props.doctors,
+    (newDoctors) => {
+        doctors.value = newDoctors ?? [];
+    }
+);
+
+const specialtyLabelMap = {
+    nutricion: 'Nutrición',
+    'nutrición': 'Nutrición',
+    nutritionist: 'Nutrición',
+    endocrinologia: 'Endocrinología',
+    'endocrinología': 'Endocrinología',
+    endocrinologist: 'Endocrinología',
+};
+
+const specialtyOptions = computed(() => {
+    const seen = new Set();
+    const options = [];
+
+    doctors.value.forEach((doctor) => {
+        if (!doctor?.speciality) return;
+        const normalized = doctor.speciality.toLowerCase();
+        if (seen.has(normalized)) return;
+        seen.add(normalized);
+        options.push(doctor.speciality);
+    });
+
+    return options;
+});
+
+const selectedSpecialty = ref(specialtyOptions.value[0] ?? null);
+
+watch(specialtyOptions, (options) => {
+    if (!options.length) {
+        selectedSpecialty.value = null;
+        return;
+    }
+
+    if (!selectedSpecialty.value || !options.includes(selectedSpecialty.value)) {
+        selectedSpecialty.value = options[0];
+    }
+});
+
+const filteredDoctors = computed(() => {
+    if (!selectedSpecialty.value) {
+        return doctors.value;
+    }
+
+    return doctors.value.filter((doctor) => doctor.speciality === selectedSpecialty.value);
+});
+
+const selectedDoctor = ref(filteredDoctors.value[0]?.id ?? null);
+
+watch(filteredDoctors, (newDoctors) => {
+    if (!newDoctors.length) {
+        selectedDoctor.value = null;
+        return;
+    }
+
+    if (!newDoctors.some((doctor) => doctor.id === selectedDoctor.value)) {
+        selectedDoctor.value = newDoctors[0].id;
+    }
+});
+
+const selectedDoctorDetails = computed(() => {
+    return doctors.value.find((doctor) => doctor.id === selectedDoctor.value) ?? null;
+});
 
 // State for navigation
 const currentMonth = ref(new Date());
@@ -29,6 +104,25 @@ const modalState = ref({
     appointmentId: null,
     isLoading: false
 });
+
+const selectedDoctorName = computed(() => selectedDoctorDetails.value?.name ?? 'Selecciona un doctor');
+const selectedDoctorSpecialtyLabel = computed(() => formatSpecialtyLabel(selectedDoctorDetails.value?.speciality ?? selectedSpecialty.value));
+
+function formatSpecialtyLabel(value) {
+    if (!value) return 'Sin especialidad definida';
+    const normalized = value.toLowerCase();
+    return specialtyLabelMap[normalized] ?? value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function getDoctorInitials(name = '') {
+    if (!name) return 'DR';
+    return name
+        .split(' ')
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase())
+        .slice(0, 2)
+        .join('') || 'DR';
+}
 
 // --- Date Helpers ---
 
@@ -173,11 +267,18 @@ async function fetchEvents() {
     const startStr = start.toISOString().split('T')[0];
     const endStr = end.toISOString().split('T')[0];
 
+    if (!selectedDoctor.value) {
+        events.value = [];
+        isLoading.value = false;
+        return;
+    }
+
     try {
         const response = await axios.get('/appointments/available-slots', {
             params: {
                 start: startStr,
                 end: endStr,
+                user_id: selectedDoctor.value,
             },
         });
         events.value = response.data;
@@ -189,8 +290,8 @@ async function fetchEvents() {
     }
 }
 
-// Watch for week changes to refetch
-watch(weekDates, () => {
+// Watch for week or doctor changes to refetch
+watch([weekDates, selectedDoctor], () => {
     fetchEvents();
 }, { immediate: true });
 
@@ -237,7 +338,7 @@ function handleSlotClick(event) {
             isOpen: true,
             type: 'book',
             title: 'Agendar Nueva Cita',
-            message: `¿Deseas agendar una cita para el ${formattedDate}?`,
+            message: `¿Deseas agendar una cita con ${selectedDoctorName.value} para el ${formattedDate}?`,
             appointmentDate: startDateString,
             appointmentId: null,
             isLoading: false
@@ -267,8 +368,19 @@ function handleModalConfirm(data) {
     modalState.value.isLoading = true;
 
     if (data.type === 'book') {
+        if (!selectedDoctor.value) {
+            toast.value?.error('Selecciona un doctor', 'Debes elegir un doctor antes de agendar una cita.');
+            modalState.value.isLoading = false;
+            return;
+        }
+
         const appointmentData = {
             appointment_date: data.date,
+            user_id: selectedDoctor.value,
+            patient_name: data.form?.patient_name ?? '',
+            patient_document: data.form?.patient_document ?? '',
+            patient_email: data.form?.patient_email ?? '',
+            appointment_reason: data.form?.appointment_reason ?? '',
         };
 
         axios.post('/appointments', appointmentData)
@@ -361,25 +473,65 @@ function getSlotClasses(event) {
 
                     <!-- Header Info -->
                     <div
-                        class="flex flex-col md:flex-row gap-6 mb-8 border-b border-gray-200 dark:border-gray-700 pb-6">
-                        <div class="flex-shrink-0">
-                            <div
-                                class="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
-                                E
+                        class="flex flex-col gap-6 mb-8 border-b border-gray-200 dark:border-gray-700 pb-6">
+                        <div class="flex flex-col lg:flex-row gap-6 lg:items-center lg:justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="flex-shrink-0">
+                                    <div
+                                        class="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
+                                        {{ getDoctorInitials(selectedDoctorDetails ? selectedDoctorDetails.name : '') }}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3
+                                        class="text-gray-500 dark:text-gray-400 text-sm uppercase tracking-wide font-semibold">
+                                        {{ selectedDoctorSpecialtyLabel }}
+                                    </h3>
+                                    <h1 class="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+                                        {{ selectedDoctorDetails ? 'Agenda con ' + selectedDoctorName : 'Selecciona un especialista' }}
+                                    </h1>
+                                    <div class="flex items-center mt-2 text-gray-500 dark:text-gray-400">
+                                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                        <span>Citas de {{ appointmentDuration }} min</span>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                        <div>
-                            <h3 class="text-gray-500 dark:text-gray-400 text-sm uppercase tracking-wide font-semibold">
-                                Enrique
-                                Alonso de Armas (DEMO)</h3>
-                            <h1 class="text-2xl font-bold text-gray-900 dark:text-white mt-1">Reunirse con Enrique
-                                Alonso</h1>
-                            <div class="flex items-center mt-2 text-gray-500 dark:text-gray-400">
-                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                </svg>
-                                <span>Citas de {{ appointmentDuration }} min</span>
+                            <div class="flex flex-col md:flex-row gap-4 w-full lg:w-auto">
+                                <div class="w-full md:w-56">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Especialidad
+                                    </label>
+                                    <select v-model="selectedSpecialty"
+                                        class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                                        <option v-for="speciality in specialtyOptions" :key="speciality" :value="speciality">
+                                            {{ formatSpecialtyLabel(speciality) }}
+                                        </option>
+                                        <option v-if="!specialtyOptions.length" disabled value="">
+                                            Sin especialistas disponibles
+                                        </option>
+                                    </select>
+                                </div>
+                                <div class="w-full md:w-64">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Doctor
+                                    </label>
+                                    <select v-model.number="selectedDoctor" :disabled="filteredDoctors.length === 0"
+                                        class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-400 disabled:dark:bg-gray-800 disabled:dark:text-gray-500">
+                                        <option v-for="doctor in filteredDoctors" :key="doctor.id" :value="doctor.id">
+                                            {{ doctor.name }}
+                                        </option>
+                                        <option v-if="filteredDoctors.length === 0" disabled value="">
+                                            No hay doctores disponibles
+                                        </option>
+                                    </select>
+                                    <p v-if="filteredDoctors.length === 0"
+                                        class="mt-1 text-xs text-red-600 dark:text-red-400">
+                                        No hay doctores disponibles para esta especialidad.
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>

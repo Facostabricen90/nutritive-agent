@@ -20,6 +20,10 @@ class AppointmentFactory extends Factory
             'user_id' => \App\Models\User::factory(),
             'appointment_date' => $this->faker->dateTimeBetween('+1 days', '+1 month'),
             'status' => 'scheduled',
+            'patient_name' => $this->faker->name(),
+            'patient_document' => $this->faker->numerify('#########'),
+            'patient_email' => $this->faker->safeEmail(),
+            'appointment_reason' => $this->faker->sentence(8),
         ];
     }
 }

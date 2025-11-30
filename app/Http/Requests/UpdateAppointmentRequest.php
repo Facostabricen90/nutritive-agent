@@ -22,6 +22,11 @@ class UpdateAppointmentRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'user_id' => 'sometimes|exists:users,id',
+            'patient_name' => 'sometimes|string|max:255',
+            'patient_document' => 'sometimes|string|max:100',
+            'patient_email' => 'sometimes|email|max:255',
+            'appointment_reason' => 'sometimes|nullable|string|max:1000',
             'appointment_date' => [
                 'sometimes',
                 'date',
@@ -29,8 +34,13 @@ class UpdateAppointmentRequest extends FormRequest
                 function ($attribute, $value, $fail) {
                     if (!$value) return;
                     
+                    $userId = $this->input('user_id', optional($this->route('appointment'))->user_id);
+                    
                     // Validar que el slot esté disponible (excluyendo la cita actual)
                     $exists = \App\Models\Appointment::where('appointment_date', $value)
+                        ->when($userId, function ($query) use ($userId) {
+                            $query->where('user_id', $userId);
+                        })
                         ->where('status', '!=', 'canceled')
                         ->where('id', '!=', $this->route('appointment')->id)
                         ->exists();
@@ -69,6 +79,8 @@ class UpdateAppointmentRequest extends FormRequest
             'appointment_date.date' => 'La fecha proporcionada no es válida.',
             'appointment_date.after' => 'La cita debe ser programada para una fecha futura.',
             'status.in' => 'El estado debe ser: scheduled, completed o canceled.',
+            'user_id.exists' => 'El doctor seleccionado no es válido.',
+            'patient_email.email' => 'El correo electrónico no es válido.',
         ];
     }
 }
