@@ -301,7 +301,8 @@ class AppointmentController extends Controller
     {
         return Inertia::render('Appointments/Create', [
             'daysAvailable' => $this->getAvailableDays(),
-            'appointmentDuration' => env('APPOINTMENT_DURATION_MINUTES', 20),
+            'appointmentDuration' => (int) env('APPOINTMENT_DURATION_MINUTES', 20),
+            'userId' => auth()->id(),
         ]);
     }
 
