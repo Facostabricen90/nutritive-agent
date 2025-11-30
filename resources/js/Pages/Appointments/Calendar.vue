@@ -403,15 +403,15 @@ function handleSlotClick(event) {
         };
     } else if (type === 'booked') {
         if (status === 'scheduled') {
-            modalState.value = {
-                isOpen: true,
-                type: 'cancel',
-                title: 'Cancelar Cita',
-                message: `¿Estás seguro de que deseas cancelar la cita del ${formattedDate}?`,
-                appointmentDate: startDateString,
-                appointmentId: event.id,
-                isLoading: false
-            };
+            const statusText = status === 'scheduled'
+                ? 'solicitada'
+                : status === 'confirmed'
+                ? 'confirmada'
+                : 'completada';
+            toast.value?.info(
+                'Información de Cita',
+                `Esta cita del ${formattedDate} ya está ${statusText}.`
+            );
         } else {
             const statusText = status === 'canceled'
                 ? 'cancelada'
