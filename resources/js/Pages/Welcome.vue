@@ -5,9 +5,6 @@ defineProps({
     canLogin: {
         type: Boolean,
     },
-    canRegister: {
-        type: Boolean,
-    },
     laravelVersion: {
         type: String,
         required: true,
@@ -52,14 +49,6 @@ defineProps({
                                 class="px-4 py-2 rounded-lg text-green-700 hover:bg-green-50 transition-colors duration-200 dark:text-green-400 dark:hover:bg-gray-800"
                             >
                                 Iniciar Sesión
-                            </Link>
-
-                            <Link
-                                v-if="canRegister"
-                                :href="route('register')"
-                                class="px-4 py-2 rounded-lg text-green-700 hover:bg-green-50 transition-colors duration-200 dark:text-green-400 dark:hover:bg-gray-800"
-                            >
-                                Registrarse
                             </Link>
                         </template>
 

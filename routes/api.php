@@ -7,4 +7,6 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-Route::apiResource('appointments', App\Http\Controllers\AppointmentController::class);
+Route::name('api.')->group(function () {
+    Route::apiResource('appointments', App\Http\Controllers\AppointmentController::class);
+});
