@@ -22,14 +22,23 @@ class StoreAppointmentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'user_id' => 'sometimes|required|exists:users,id',
+            'user_id' => 'required|exists:users,id',
+            'patient_name' => 'required|string|max:255',
+            'patient_document' => 'required|string|max:100',
+            'patient_email' => 'required|email|max:255',
+            'appointment_reason' => 'nullable|string|max:1000',
             'appointment_date' => [
                 'required',
                 'date',
                 'after:now',
                 function ($attribute, $value, $fail) {
                     // Validar que el slot esté disponible
+                    $userId = $this->input('user_id');
+
                     $exists = \App\Models\Appointment::where('appointment_date', $value)
+                        ->when($userId, function ($query) use ($userId) {
+                            $query->where('user_id', $userId);
+                        })
                         ->where('status', '!=', 'canceled')
                         ->exists();
                     
@@ -63,39 +72,12 @@ class StoreAppointmentRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
-        // Solo agregar user_id si no viene en la petición
-        if (!$this->has('user_id')) {
-            $this->merge([
-                'user_id' => auth()->id(),
-            ]);
-        }
-        
         // Agregar status por defecto si no viene
         if (!$this->has('status')) {
             $this->merge([
                 'status' => 'scheduled',
             ]);
         }
-    }
-
-    /**
-     * Get the validated data from the request.
-     */
-    public function validated($key = null, $default = null)
-    {
-        $validated = parent::validated($key, $default);
-        
-        // Asegurar que user_id esté presente
-        if (!isset($validated['user_id'])) {
-            $validated['user_id'] = auth()->id();
-        }
-        
-        // Asegurar que status esté presente
-        if (!isset($validated['status'])) {
-            $validated['status'] = 'scheduled';
-        }
-        
-        return $validated;
     }
 
     /**
@@ -107,6 +89,12 @@ class StoreAppointmentRequest extends FormRequest
             'appointment_date.required' => 'La fecha y hora de la cita es obligatoria.',
             'appointment_date.date' => 'La fecha proporcionada no es válida.',
             'appointment_date.after' => 'La cita debe ser programada para una fecha futura.',
+            'user_id.required' => 'Debes seleccionar un doctor.',
+            'user_id.exists' => 'El doctor seleccionado no es válido.',
+            'patient_name.required' => 'El nombre del paciente es obligatorio.',
+            'patient_document.required' => 'La cédula del paciente es obligatoria.',
+            'patient_email.required' => 'El correo del paciente es obligatorio.',
+            'patient_email.email' => 'El correo electrónico no es válido.',
         ];
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Appointment;
+use App\Models\User;
 use App\Http\Requests\StoreAppointmentRequest;
 use App\Http\Requests\UpdateAppointmentRequest;
 use Illuminate\Http\Response;
@@ -10,6 +11,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class AppointmentController extends Controller
 {
@@ -19,7 +21,9 @@ class AppointmentController extends Controller
     public function index()
     {
         return Inertia::render('Appointments/Index', [
-            'appointments' => Appointment::with('user')->orderBy('appointment_date', 'desc')->get()
+            'appointments' => Appointment::with('user')
+                ->orderBy('appointment_date', 'desc')
+                ->get()
         ]);
     }
 
@@ -29,11 +33,27 @@ class AppointmentController extends Controller
     public function calendar()
     {
         $daysAvailable = $this->getAvailableDays();
+        $specialtyColumn = $this->getSpecialtyColumn();
+        $doctors = User::query()
+            ->select('id', 'name', $specialtyColumn . ' as speciality')
+            ->whereIn('role', ['doctor', 'doctor_s'])
+            ->orderBy('speciality')
+            ->orderBy('name')
+            ->get();
+
+        $doctorsBySpecialty = $doctors
+            ->groupBy('speciality')
+            ->map(function ($group) {
+                return $group->values();
+            })
+            ->toArray();
         
         return Inertia::render('Appointments/Calendar', [
             'daysAvailable' => $daysAvailable,
             // CORRECCIÓN 1: Forzar (int) para evitar el error de prop en Vue
             'appointmentDuration' => (int) env('APPOINTMENT_DURATION_MINUTES', 20),
+            'doctors' => $doctors->values()->toArray(),
+            'doctorsBySpecialty' => $doctorsBySpecialty,
         ]);
     }
 
@@ -42,12 +62,20 @@ class AppointmentController extends Controller
      */
     public function getAvailableSlots(Request $request)
     {
+        $validated = $request->validate([
+            'start' => 'required|date',
+            'end' => 'required|date|after_or_equal:start',
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        $userId = (int) $validated['user_id'];
+
         // CORRECCIÓN 3: Try-catch para capturar el error 500 y mostrarlo
         try {
-            $start = Carbon::parse($request->input('start'), 'UTC')->setTimezone('America/Bogota');
-            $end = Carbon::parse($request->input('end'), 'UTC')->setTimezone('America/Bogota');
+            $start = Carbon::parse($validated['start'], 'UTC')->setTimezone('America/Bogota');
+            $end = Carbon::parse($validated['end'], 'UTC')->setTimezone('America/Bogota');
             
-            $allSlots = $this->generateAllSlotsWithStatus($start, $end);
+            $allSlots = $this->generateAllSlotsWithStatus($start, $end, $userId);
             
             return response()->json($allSlots);
         } catch (\Exception $e) {
@@ -59,7 +87,7 @@ class AppointmentController extends Controller
     /**
      * Generate all time slots and determine their status (available, booked, etc.). 
      */
-    private function generateAllSlotsWithStatus(Carbon $start, Carbon $end)
+    private function generateAllSlotsWithStatus(Carbon $start, Carbon $end, int $userId)
     {
         // LOG 1: Ver qué rango de fechas llega
         Log::info("--- GENERANDO SLOTS ---");
@@ -74,6 +102,7 @@ class AppointmentController extends Controller
         Log::info("Días disponibles config: " . implode(', ', $daysAvailable));
 
         $bookedAppointments = Appointment::with('user')
+            ->where('user_id', $userId)
             ->whereRaw("appointment_date >= ? AND appointment_date <= ?", [
                 $start->format('Y-m-d 00:00:00'),
                 $end->format('Y-m-d 23:59:59')
@@ -122,6 +151,7 @@ class AppointmentController extends Controller
                                 'type' => 'booked',
                                 'userId' => $appointment->user_id,
                                 'status' => $appointment->status,
+                                    'doctorId' => $userId,
                             ],
                         ];
                     } else {
@@ -132,6 +162,7 @@ class AppointmentController extends Controller
                                 'end' => $endTime->format('Y-m-d H:i:s'),
                                 'extendedProps' => [
                                     'type' => 'available',
+                                    'doctorId' => $userId,
                                 ],
                             ];
                         }
@@ -245,6 +276,20 @@ class AppointmentController extends Controller
         // Remove curly braces and split by comma
         $daysString = trim($daysString, '{}');
         return array_map('trim', explode(',', $daysString));
+    }
+
+    /**
+     * Determine which specialty column exists in the users table.
+     */
+    private function getSpecialtyColumn(): string
+    {
+        static $column = null;
+
+        if ($column === null) {
+            $column = Schema::hasColumn('users', 'speciality') ? 'speciality' : 'specialty';
+        }
+
+        return $column;
     }
 
     /**

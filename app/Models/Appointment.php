@@ -15,7 +15,8 @@ class Appointment extends Model
         'user_id',
         'appointment_date',
         'status',
-        'patient_id',
+        'patient_document',
+        'patient_name',
         'patient_email',
         'appointment_reason',
     ];
@@ -31,4 +32,5 @@ class Appointment extends Model
     {
         return $this->belongsTo(User::class);
     }
+
 }
