@@ -12,6 +12,7 @@ return new class extends Migration {
     {
         Schema::table('appointments', function (Blueprint $table) {
             $table->string('patient_id')->nullable()->after('user_id'); // Cedula
+            $table->string('patient_name')->nullable()->after('patient_id');
             $table->string('patient_email')->nullable()->after('patient_id');
             $table->text('appointment_reason')->nullable()->after('status');
         });
@@ -23,7 +24,7 @@ return new class extends Migration {
     public function down(): void
     {
         Schema::table('appointments', function (Blueprint $table) {
-            $table->dropColumn(['patient_id', 'patient_email', 'appointment_reason']);
+            $table->dropColumn(['patient_id', 'patient_name', 'patient_email', 'appointment_reason']);
         });
     }
 };
